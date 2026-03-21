@@ -1,14 +1,14 @@
 import io
-import logging
 import os
+import time
 from typing import Any, Dict, Optional, Set
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
 
-from .runtime_utils import fetch_bytes, fetch_json, load_json_file, save_json_file
+from astrbot.api import logger
 
-logger = logging.getLogger(__name__)
+from ..runtime_utils import fetch_bytes, fetch_json, load_json_file, save_json_file
 
 
 class AchievementMonitor:
@@ -298,6 +298,213 @@ class AchievementMonitor:
             lines.append(line)
         return lines
 
+    def _load_render_fonts(self, font_path=None):
+        fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
+        font_regular = font_path or os.path.join(fonts_dir, "NotoSansHans-Regular.otf")
+        font_medium = (
+            font_regular.replace("Regular", "Medium")
+            if "Regular" in font_regular
+            else os.path.join(fonts_dir, "NotoSansHans-Medium.otf")
+        )
+        if not os.path.isabs(font_regular):
+            font_regular = os.path.join(fonts_dir, os.path.basename(font_regular))
+        if not os.path.isabs(font_medium):
+            font_medium = os.path.join(fonts_dir, os.path.basename(font_medium))
+        if not os.path.exists(font_regular):
+            font_regular = os.path.join(fonts_dir, "NotoSansHans-Regular.otf")
+        if not os.path.exists(font_medium):
+            font_medium = os.path.join(fonts_dir, "NotoSansHans-Medium.otf")
+
+        try:
+            return {
+                "title": ImageFont.truetype(font_medium, 20),
+                "game": ImageFont.truetype(font_regular, 15),
+                "name": ImageFont.truetype(font_medium, 16),
+                "desc": ImageFont.truetype(font_regular, 13),
+                "percent": ImageFont.truetype(font_regular, 12),
+                "game_small": ImageFont.truetype(font_regular, 12),
+                "time": ImageFont.truetype(font_regular, 10),
+            }
+        except Exception:
+            default_font = ImageFont.load_default()
+            return {
+                "title": default_font,
+                "game": default_font,
+                "name": default_font,
+                "desc": default_font,
+                "percent": default_font,
+                "game_small": default_font,
+                "time": default_font,
+            }
+
+    def _resolve_game_name(self, achievement_details: dict) -> str:
+        for detail in achievement_details.values():
+            if detail and detail.get("game_name"):
+                return detail["game_name"]
+        return "未知游戏"
+
+    def _build_header_metrics(self, width: int, padding_h: int, padding_v: int, fonts: dict, title_text: str, game_name: str):
+        dummy_image = Image.new("RGB", (10, 10))
+        dummy_draw = ImageDraw.Draw(dummy_image)
+        title_bbox = dummy_draw.textbbox((0, 0), title_text, font=fonts["title"])
+        title_h = title_bbox[3] - title_bbox[1]
+        game_bbox = dummy_draw.textbbox((0, 0), game_name, font=fonts["game_small"])
+        game_h = game_bbox[3] - game_bbox[1]
+        progress_bar_h = 12
+        progress_bar_margin = 8
+        title_game_gap = 8
+        header_h = title_h + title_game_gap + game_h + progress_bar_h + progress_bar_margin * 3
+        return {
+            "title_h": title_h,
+            "game_h": game_h,
+            "progress_bar_h": progress_bar_h,
+            "progress_bar_margin": progress_bar_margin,
+            "title_game_gap": title_game_gap,
+            "header_h": header_h,
+            "width": width,
+            "padding_h": padding_h,
+            "padding_v": padding_v,
+        }
+
+    def _prepare_card_layout(self, achievement_details, new_achievements, fonts, max_text_width, icon_size):
+        card_heights = []
+        card_texts = []
+        percent_values = []
+
+        for api_name in new_achievements:
+            detail = achievement_details.get(api_name)
+            if not detail:
+                card_heights.append(80)
+                card_texts.append(([""], [""], "未知"))
+                percent_values.append(0)
+                continue
+
+            name = detail.get("name", api_name)
+            description = detail.get("description", "")
+            percent = detail.get("percent")
+            try:
+                percent_value = float(percent) if percent is not None else None
+            except (ValueError, TypeError):
+                percent_value = None
+
+            percent_text = f"{percent_value:.1f}%" if percent_value is not None else "未知"
+            name_lines = self._wrap_text(name, fonts["name"], max_text_width)
+            desc_lines = self._wrap_text(description, fonts["desc"], max_text_width)
+            card_height = max(icon_size + 24, len(name_lines) * 22 + len(desc_lines) * 18 + 60)
+
+            card_heights.append(card_height)
+            card_texts.append((name_lines, desc_lines, percent_text))
+            percent_values.append(percent_value if percent_value is not None else 0)
+
+        return card_heights, card_texts, percent_values
+
+    def _draw_progress_bar(
+        self,
+        draw,
+        *,
+        width,
+        padding_h,
+        padding_v,
+        title_h,
+        title_game_gap,
+        game_h,
+        progress_bar_margin,
+        progress_bar_h,
+        unlocked_achievements,
+        total_achievements,
+        progress_percent,
+        font_percent,
+    ):
+        bar_x = padding_h
+        bar_y = padding_v + title_h + title_game_gap + game_h + progress_bar_margin
+        bar_w = width - padding_h * 2
+        bar_h = progress_bar_h
+
+        draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=bar_h // 2, fill=(60, 62, 70, 180))
+        fill_w = int(bar_w * progress_percent / 100)
+        if fill_w > 0:
+            draw.rounded_rectangle((bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=bar_h // 2, fill=(26, 159, 255, 255))
+
+        progress_text = f"{unlocked_achievements}/{total_achievements} ({progress_percent}%)"
+        progress_bbox = draw.textbbox((0, 0), progress_text, font=font_percent)
+        draw.text(
+            (bar_x + bar_w - (progress_bbox[2] - progress_bbox[0]) - 6, bar_y - 2),
+            progress_text,
+            fill=(142, 207, 255),
+            font=font_percent,
+        )
+
+    async def _fetch_icon_bytes(self, client: httpx.AsyncClient | None, icon_url: str | None, request_semaphore=None):
+        if not icon_url:
+            return None
+        if client is None:
+            async with httpx.AsyncClient(timeout=10) as local_client:
+                return await fetch_bytes(local_client, icon_url, timeout=10)
+        return await fetch_bytes(client, icon_url, timeout=10, semaphore=request_semaphore)
+
+    async def _draw_cards(
+        self,
+        image,
+        draw,
+        achievement_details,
+        new_achievements,
+        card_heights,
+        card_texts,
+        percent_values,
+        *,
+        width,
+        padding_h,
+        y,
+        icon_size,
+        icon_margin_right,
+        text_margin_top,
+        card_gap,
+        card_radius,
+        card_base_bg,
+        card_inner_bg,
+        fonts,
+        http_client: httpx.AsyncClient | None,
+        request_semaphore=None,
+    ):
+        active_client = http_client
+        owned_client = None
+        if active_client is None:
+            owned_client = httpx.AsyncClient(timeout=10)
+            active_client = owned_client
+
+        try:
+            for idx, api_name in enumerate(new_achievements):
+                detail = achievement_details.get(api_name)
+                if not detail:
+                    y += card_heights[idx] + card_gap
+                    continue
+                icon_data = await self._fetch_icon_bytes(active_client, detail.get("icon"), request_semaphore=request_semaphore)
+                y = self._draw_card(
+                    image,
+                    draw,
+                    detail,
+                    icon_data,
+                    card_heights[idx],
+                    card_texts[idx],
+                    percent_values[idx],
+                    padding_h,
+                    y,
+                    width,
+                    icon_size,
+                    icon_margin_right,
+                    text_margin_top,
+                    card_radius,
+                    card_base_bg,
+                    card_inner_bg,
+                    fonts["name"],
+                    fonts["desc"],
+                    fonts["percent"],
+                )
+                y += card_gap
+        finally:
+            if owned_client is not None:
+                await owned_client.aclose()
+
     async def render_achievement_image(
         self,
         achievement_details: dict,
@@ -322,170 +529,89 @@ class AchievementMonitor:
         text_margin_top = 10
         max_text_width = width - padding_h * 2 - icon_size - icon_margin_right - 18
 
-        fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
-        font_regular = font_path or os.path.join(fonts_dir, "NotoSansHans-Regular.otf")
-        font_medium = font_regular.replace("Regular", "Medium") if "Regular" in font_regular else os.path.join(fonts_dir, "NotoSansHans-Medium.otf")
-        if not os.path.isabs(font_regular):
-            font_regular = os.path.join(fonts_dir, os.path.basename(font_regular))
-        if not os.path.isabs(font_medium):
-            font_medium = os.path.join(fonts_dir, os.path.basename(font_medium))
-        if not os.path.exists(font_regular):
-            font_regular = os.path.join(fonts_dir, "NotoSansHans-Regular.otf")
-        if not os.path.exists(font_medium):
-            font_medium = os.path.join(fonts_dir, "NotoSansHans-Medium.otf")
-
-        try:
-            font_title = ImageFont.truetype(font_medium, 20)
-            font_game = ImageFont.truetype(font_regular, 15)
-            font_name = ImageFont.truetype(font_medium, 16)
-            font_desc = ImageFont.truetype(font_regular, 13)
-            font_percent = ImageFont.truetype(font_regular, 12)
-            font_game_small = ImageFont.truetype(font_regular, 12)
-            font_time = ImageFont.truetype(font_regular, 10)
-        except Exception:
-            font_title = font_game = font_name = font_desc = font_percent = font_game_small = font_time = ImageFont.load_default()
-
+        fonts = self._load_render_fonts(font_path=font_path)
         unlocked_achievements = len(unlocked_set or set())
         total_achievements = len(achievement_details)
         progress_percent = int(unlocked_achievements / total_achievements * 100) if total_achievements else 0
 
         title_text = f"{player_name} 解锁新成就"
-        game_name = ""
-        for detail in achievement_details.values():
-            if detail and detail.get("game_name"):
-                game_name = detail["game_name"]
-                break
-        if not game_name:
-            game_name = "未知游戏"
-
+        game_name = self._resolve_game_name(achievement_details)
         now_text = time.strftime("%m-%d %H:%M")
 
-        dummy_image = Image.new("RGB", (10, 10))
-        dummy_draw = ImageDraw.Draw(dummy_image)
-        title_bbox = dummy_draw.textbbox((0, 0), title_text, font=font_title)
-        title_h = title_bbox[3] - title_bbox[1]
-        game_bbox = dummy_draw.textbbox((0, 0), game_name, font=font_game_small)
-        game_h = game_bbox[3] - game_bbox[1]
-        progress_bar_h = 12
-        progress_bar_margin = 8
-        title_game_gap = 8
-        header_h = title_h + title_game_gap + game_h + progress_bar_h + progress_bar_margin * 3
+        header_metrics = self._build_header_metrics(width, padding_h, padding_v, fonts, title_text, game_name)
+        card_heights, card_texts, percent_values = self._prepare_card_layout(
+            achievement_details,
+            new_achievements,
+            fonts,
+            max_text_width,
+            icon_size,
+        )
 
-        card_heights = []
-        card_texts = []
-        percent_values = []
-        for api_name in new_achievements:
-            detail = achievement_details.get(api_name)
-            if not detail:
-                card_heights.append(80)
-                card_texts.append(([""], [""], "未知"))
-                percent_values.append(0)
-                continue
-            name = detail.get("name", api_name)
-            description = detail.get("description", "")
-            percent = detail.get("percent")
-            try:
-                percent_value = float(percent) if percent is not None else None
-            except (ValueError, TypeError):
-                percent_value = None
-            percent_text = f"{percent_value:.1f}%" if percent_value is not None else "未知"
-            name_lines = self._wrap_text(name, font_name, max_text_width)
-            desc_lines = self._wrap_text(description, font_desc, max_text_width)
-            card_height = max(icon_size + 24, len(name_lines) * 22 + len(desc_lines) * 18 + 60)
-            card_heights.append(card_height)
-            card_texts.append((name_lines, desc_lines, percent_text))
-            percent_values.append(percent_value if percent_value is not None else 0)
-
-        total_height = padding_v + header_h + padding_v + sum(card_heights) + card_gap * (len(card_heights) - 1) + padding_v
+        total_height = (
+            padding_v
+            + header_metrics["header_h"]
+            + padding_v
+            + sum(card_heights)
+            + card_gap * (len(card_heights) - 1)
+            + padding_v
+        )
         image = Image.new("RGBA", (width, total_height), (20, 26, 33, 255))
         draw = ImageDraw.Draw(image)
 
-        draw.text((padding_h, padding_v), title_text, fill=(255, 255, 255), font=font_title)
-        draw.text((padding_h, padding_v + title_h + title_game_gap), game_name, fill=(160, 160, 160), font=font_game_small)
-        time_bbox = draw.textbbox((0, 0), now_text, font=font_time)
-        draw.text((width - padding_h - (time_bbox[2] - time_bbox[0]), padding_v), now_text, fill=(168, 168, 168), font=font_time)
+        draw.text((padding_h, padding_v), title_text, fill=(255, 255, 255), font=fonts["title"])
+        draw.text(
+            (padding_h, padding_v + header_metrics["title_h"] + header_metrics["title_game_gap"]),
+            game_name,
+            fill=(160, 160, 160),
+            font=fonts["game_small"],
+        )
+        time_bbox = draw.textbbox((0, 0), now_text, font=fonts["time"])
+        draw.text(
+            (width - padding_h - (time_bbox[2] - time_bbox[0]), padding_v),
+            now_text,
+            fill=(168, 168, 168),
+            font=fonts["time"],
+        )
 
-        bar_x = padding_h
-        bar_y = padding_v + title_h + title_game_gap + game_h + progress_bar_margin
-        bar_w = width - padding_h * 2
-        bar_h = progress_bar_h
-        draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=bar_h // 2, fill=(60, 62, 70, 180))
-        fill_w = int(bar_w * progress_percent / 100)
-        if fill_w > 0:
-            draw.rounded_rectangle((bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=bar_h // 2, fill=(26, 159, 255, 255))
-        progress_text = f"{unlocked_achievements}/{total_achievements} ({progress_percent}%)"
-        progress_bbox = draw.textbbox((0, 0), progress_text, font=font_percent)
-        draw.text((bar_x + bar_w - (progress_bbox[2] - progress_bbox[0]) - 6, bar_y - 2), progress_text, fill=(142, 207, 255), font=font_percent)
+        self._draw_progress_bar(
+            draw,
+            width=width,
+            padding_h=padding_h,
+            padding_v=padding_v,
+            title_h=header_metrics["title_h"],
+            title_game_gap=header_metrics["title_game_gap"],
+            game_h=header_metrics["game_h"],
+            progress_bar_margin=header_metrics["progress_bar_margin"],
+            progress_bar_h=header_metrics["progress_bar_h"],
+            unlocked_achievements=unlocked_achievements,
+            total_achievements=total_achievements,
+            progress_percent=progress_percent,
+            font_percent=fonts["percent"],
+        )
 
-        async def _icon_bytes(client: httpx.AsyncClient | None, icon_url: str | None):
-            if not icon_url:
-                return None
-            if client is None:
-                async with httpx.AsyncClient(timeout=10) as local_client:
-                    return await fetch_bytes(local_client, icon_url, timeout=10)
-            return await fetch_bytes(client, icon_url, timeout=10, semaphore=request_semaphore)
-
-        y = padding_v + header_h + padding_v
-        if http_client is None:
-            async with httpx.AsyncClient(timeout=10) as local_client:
-                active_client = local_client
-                for idx, api_name in enumerate(new_achievements):
-                    detail = achievement_details.get(api_name)
-                    if not detail:
-                        y += card_heights[idx] + card_gap
-                        continue
-                    icon_data = await _icon_bytes(active_client, detail.get("icon"))
-                    y = self._draw_card(
-                        image,
-                        draw,
-                        detail,
-                        icon_data,
-                        card_heights[idx],
-                        card_texts[idx],
-                        percent_values[idx],
-                        padding_h,
-                        y,
-                        width,
-                        icon_size,
-                        icon_margin_right,
-                        text_margin_top,
-                        card_radius,
-                        card_base_bg,
-                        card_inner_bg,
-                        font_name,
-                        font_desc,
-                        font_percent,
-                    )
-                    y += card_gap
-        else:
-            for idx, api_name in enumerate(new_achievements):
-                detail = achievement_details.get(api_name)
-                if not detail:
-                    y += card_heights[idx] + card_gap
-                    continue
-                icon_data = await _icon_bytes(http_client, detail.get("icon"))
-                y = self._draw_card(
-                    image,
-                    draw,
-                    detail,
-                    icon_data,
-                    card_heights[idx],
-                    card_texts[idx],
-                    percent_values[idx],
-                    padding_h,
-                    y,
-                    width,
-                    icon_size,
-                    icon_margin_right,
-                    text_margin_top,
-                    card_radius,
-                    card_base_bg,
-                    card_inner_bg,
-                    font_name,
-                    font_desc,
-                    font_percent,
-                )
-                y += card_gap
+        y = padding_v + header_metrics["header_h"] + padding_v
+        await self._draw_cards(
+            image,
+            draw,
+            achievement_details,
+            new_achievements,
+            card_heights,
+            card_texts,
+            percent_values,
+            width=width,
+            padding_h=padding_h,
+            y=y,
+            icon_size=icon_size,
+            icon_margin_right=icon_margin_right,
+            text_margin_top=text_margin_top,
+            card_gap=card_gap,
+            card_radius=card_radius,
+            card_base_bg=card_base_bg,
+            card_inner_bg=card_inner_bg,
+            fonts=fonts,
+            http_client=http_client,
+            request_semaphore=request_semaphore,
+        )
 
         output = io.BytesIO()
         image.convert("RGB").save(output, format="PNG")
@@ -601,7 +727,6 @@ class AchievementMonitor:
         label_w = label_bbox[2] - label_bbox[0]
         text_color = (142, 207, 255) if percent_value >= 10 else (255, 220, 60)
         draw.text((text_x, percent_y), percent_label, fill=text_color, font=font_percent)
-        percent_value_bbox = draw.textbbox((0, 0), percent_text, font=font_percent)
         value_x = text_x + label_w + 4 + (card_x1 - (text_x + label_w + 4) - 48)
         draw.text((value_x, percent_y), percent_text, fill=text_color, font=font_percent)
 

@@ -1,3 +1,6 @@
+import time
+
+
 class SteamMonitorService:
     def __init__(self, owner):
         self.owner = owner
@@ -28,7 +31,7 @@ class SteamMonitorService:
             self.owner._save_notify_session()
 
         status_map = await self.owner._fetch_player_status_batch(steam_ids, retry=1)
-        now = int(__import__("time").time())
+        now = int(time.time())
         for sid, status in status_map.items():
             self.owner.group_last_states.setdefault(normalized_group_id, {})[sid] = status
             if status.get("gameid"):

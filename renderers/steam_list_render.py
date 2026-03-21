@@ -1,14 +1,13 @@
 import asyncio
 import io
-import logging
 import os
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
 
-from .runtime_utils import download_to_path
+from astrbot.api import logger
 
-logger = logging.getLogger(__name__)
+from ..runtime_utils import download_to_path
 
 STEAM_BG_TOP = (44, 62, 80)
 STEAM_BG_BOTTOM = (24, 32, 44)

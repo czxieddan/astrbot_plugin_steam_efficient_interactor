@@ -1,7 +1,6 @@
-import astrbot
-import astrbot.core.star
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 
 import asyncio
 import httpx
@@ -13,12 +12,12 @@ import shutil
 import tempfile
 import time
 import traceback
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageChops
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.message_components import Image, Plain
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, StarTools, register
 
 from .achievement_monitor import AchievementMonitor
 from .game_end_render import render_game_end
@@ -51,10 +50,10 @@ from .superpower_util import get_daily_superpower, load_abilities
 )
 class SteamStatusMonitorV2(Star):
     def _get_group_data_path(self, group_id, key):
-        return os.path.join(self.data_dir, f"group_{group_id}_{key}.json")
+        return self.data_dir / f"group_{group_id}_{key}.json"
 
     def _get_groups_file_path(self):
-        return os.path.join(self.data_dir, "steam_groups.json")
+        return self.data_dir / "steam_groups.json"
 
     def _load_group_steam_ids(self):
         self.group_steam_ids = load_json_file(self._get_groups_file_path(), {})
@@ -63,10 +62,10 @@ class SteamStatusMonitorV2(Star):
         save_json_file(self._get_groups_file_path(), self.group_steam_ids)
 
     def _load_notify_session(self):
-        self.notify_sessions = load_json_file(os.path.join(self.data_dir, "notify_sessions.json"), {})
+        self.notify_sessions = load_json_file(self.data_dir / "notify_sessions.json", {})
 
     def _save_notify_session(self):
-        save_json_file(os.path.join(self.data_dir, "notify_sessions.json"), self.notify_sessions)
+        save_json_file(self.data_dir / "notify_sessions.json", self.notify_sessions)
 
     def _load_persistent_data(self):
         for group_id in self.group_steam_ids:
@@ -115,20 +114,20 @@ class SteamStatusMonitorV2(Star):
             raise
 
     def _ensure_fonts(self):
-        plugin_fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
-        cache_fonts_dir = str(astrbot.core.star.StarTools.get_data_dir("steam_status_monitor"))
-        os.makedirs(plugin_fonts_dir, exist_ok=True)
-        os.makedirs(cache_fonts_dir, exist_ok=True)
+        plugin_fonts_dir = Path(__file__).resolve().parent / "fonts"
+        cache_fonts_dir = StarTools.get_data_dir("steam_status_monitor")
+        plugin_fonts_dir.mkdir(parents=True, exist_ok=True)
+        cache_fonts_dir.mkdir(parents=True, exist_ok=True)
         font_candidates = ["NotoSansHans-Regular.otf", "NotoSansHans-Medium.otf"]
         self.font_paths = {}
         for font_name in font_candidates:
-            plugin_font_path = os.path.join(plugin_fonts_dir, font_name)
-            cache_font_path = os.path.join(cache_fonts_dir, font_name)
-            if os.path.exists(plugin_font_path):
+            plugin_font_path = plugin_fonts_dir / font_name
+            cache_font_path = cache_fonts_dir / font_name
+            if plugin_font_path.exists():
                 shutil.copy(plugin_font_path, cache_font_path)
-                self.font_paths[font_name] = cache_font_path
-            elif os.path.exists(cache_font_path):
-                self.font_paths[font_name] = cache_font_path
+                self.font_paths[font_name] = str(cache_font_path)
+            elif cache_font_path.exists():
+                self.font_paths[font_name] = str(cache_font_path)
             else:
                 self.font_paths[font_name] = None
         if not all(self.font_paths.values()):
@@ -261,7 +260,7 @@ class SteamStatusMonitorV2(Star):
         self._recent_start_notify = {}
         self._superpower_cache = {}
         self._abilities = None
-        self._abilities_path = os.path.join(os.path.dirname(__file__), "abilities.txt")
+        self._abilities_path = Path(__file__).resolve().parent / "abilities.txt"
         self._game_name_cache = {}
         self._online_count_cache = {}
         self._dirty = False
@@ -274,8 +273,8 @@ class SteamStatusMonitorV2(Star):
         )
         self._pending_quit_tasks = {}
 
-        self.data_dir = str(astrbot.core.star.StarTools.get_data_dir("steam_status_monitor"))
-        os.makedirs(self.data_dir, exist_ok=True)
+        self.data_dir = StarTools.get_data_dir("steam_status_monitor")
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         self.config_service = SteamConfigService(self)
         normalized_incoming_config = self.config_service.normalize_incoming_config(self.config)
         self.config = self.config_service.load_merged_config(normalized_incoming_config)
@@ -560,26 +559,17 @@ class SteamStatusMonitorV2(Star):
         else:
             image = PILImage.open(img_path_or_bytes).convert("RGB")
 
-        width, height = image.size
-        pixels = image.load()
-        min_x = width
-        min_y = height
-        max_x = 0
-        max_y = 0
-
-        for y in range(height):
-            for x in range(width):
-                pixel = pixels[x, y]
-                distance = sum(abs(pixel[index] - bg_color[index]) for index in range(3))
-                if distance > threshold:
-                    min_x = min(min_x, x)
-                    min_y = min(min_y, y)
-                    max_x = max(max_x, x)
-                    max_y = max(max_y, y)
-
-        if min_x > max_x or min_y > max_y:
+        background = PILImage.new("RGB", image.size, bg_color)
+        diff = ImageChops.difference(image, background)
+        channels = diff.split()
+        binary_mask = PILImage.merge(
+            "RGB",
+            tuple(channel.point(lambda value: 255 if value > threshold else 0) for channel in channels),
+        )
+        bbox = binary_mask.getbbox()
+        if not bbox:
             return image
-        return image.crop((min_x, min_y, max_x + 1, max_y + 1))
+        return image.crop(bbox)
 
     async def init_poll_time_once(self):
         await asyncio.sleep(5)
@@ -1074,15 +1064,15 @@ class SteamStatusMonitorV2(Star):
     @filter.command("steam清除缓存")
     async def steam_clear_cache(self, event: AstrMessageEvent):
         cache_dirs = [
-            os.path.join(self.data_dir, "avatars"),
-            os.path.join(self.data_dir, "covers"),
-            os.path.join(self.data_dir, "covers_v"),
+            self.data_dir / "avatars",
+            self.data_dir / "covers",
+            self.data_dir / "covers_v",
         ]
         cleared = []
         for directory in cache_dirs:
-            if os.path.exists(directory):
+            if directory.exists():
                 shutil.rmtree(directory)
-                cleared.append(directory)
+                cleared.append(str(directory))
         if cleared:
             yield event.plain_result("已清除缓存目录：\n" + "\n".join(cleared))
         else:

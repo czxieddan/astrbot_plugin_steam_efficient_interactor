@@ -1,15 +1,13 @@
 import io
-import logging
 import os
 import time
-import hashlib
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
 
-from .runtime_utils import download_to_path, fetch_json
+from astrbot.api import logger
 
-logger = logging.getLogger(__name__)
+from .render_common import get_avatar_path, get_cover_path, render_gradient_bg
 
 BG_COLOR_TOP = (24, 18, 48)
 BG_COLOR_BOTTOM = (8, 8, 16)
@@ -19,163 +17,20 @@ IMG_W, IMG_H = 512, 192
 STAR_BG_PATH = os.path.join(os.path.dirname(__file__), "随机散布的小星星767xx809xp.png")
 
 
-async def get_sgdb_vertical_cover(
-    game_name,
-    sgdb_api_key=None,
-    sgdb_game_name=None,
-    appid=None,
-    http_client: httpx.AsyncClient | None = None,
-    request_semaphore=None,
-):
-    if not sgdb_api_key:
-        return None
-    headers = {"Authorization": f"Bearer {sgdb_api_key}"}
-    search_name = sgdb_game_name if sgdb_game_name else game_name
-    if not search_name:
-        return None
-
-    async def _get_cover_url(client: httpx.AsyncClient, candidate_name: str) -> str | None:
-        search_url = f"https://www.steamgriddb.com/api/v2/search/autocomplete/{candidate_name}"
-        status_code, data = await fetch_json(
-            client,
-            search_url,
-            headers=headers,
-            timeout=10,
-            semaphore=request_semaphore,
-        )
-        if status_code != 200 or not data or not data.get("success") or not data.get("data"):
-            return None
-        sgdb_game_id = data["data"][0]["id"]
-        grid_url = f"https://www.steamgriddb.com/api/v2/grids/game/{sgdb_game_id}?dimensions=600x900&type=static&limit=3"
-        status_code, grid_data = await fetch_json(
-            client,
-            grid_url,
-            headers=headers,
-            timeout=10,
-            semaphore=request_semaphore,
-        )
-        if status_code != 200 or not grid_data or not grid_data.get("success") or not grid_data.get("data"):
-            return None
-        for grid in grid_data["data"]:
-            if grid.get("type") == "static" and grid.get("url"):
-                return grid["url"]
-        first_item = grid_data["data"][0]
-        return first_item.get("url")
-
-    async def _resolve_from_appid(client: httpx.AsyncClient) -> str | None:
-        if not appid:
-            return None
-        game_url = f"https://www.steamgriddb.com/api/v2/games/steam/{appid}"
-        status_code, data = await fetch_json(
-            client,
-            game_url,
-            headers=headers,
-            timeout=10,
-            semaphore=request_semaphore,
-        )
-        if status_code != 200 or not data or not data.get("success") or not data.get("data"):
-            return None
-        sgdb_name = data["data"].get("name")
-        if not sgdb_name:
-            return None
-        return await _get_cover_url(client, sgdb_name)
-
-    async def _run(client: httpx.AsyncClient) -> str | None:
-        cover_url = await _get_cover_url(client, search_name)
-        if cover_url:
-            return cover_url
-        return await _resolve_from_appid(client)
-
-    if http_client is None:
-        async with httpx.AsyncClient(timeout=10) as client:
-            return await _run(client)
-    return await _run(http_client)
-
-
-async def get_avatar_path(
-    data_dir,
-    steamid,
-    url,
-    force_update=False,
-    http_client: httpx.AsyncClient | None = None,
-    request_semaphore=None,
-):
-    if not url:
-        return None
-    avatar_dir = os.path.join(data_dir, "avatars")
-    os.makedirs(avatar_dir, exist_ok=True)
-    path = os.path.join(avatar_dir, f"{steamid}.jpg")
-    refresh_interval = 24 * 3600
-    if os.path.exists(path) and not force_update:
-        if time.time() - os.path.getmtime(path) < refresh_interval:
-            return path
-    if http_client is None:
-        async with httpx.AsyncClient(timeout=10) as client:
-            return await download_to_path(client, url, path, timeout=10)
-    return await download_to_path(http_client, url, path, timeout=10, semaphore=request_semaphore)
-
-
-def render_gradient_bg(img_w, img_h, color_top, color_bottom):
-    image = Image.new("RGB", (img_w, img_h), color_top)
-    top_r, top_g, top_b = color_top
-    bottom_r, bottom_g, bottom_b = color_bottom
-    for y in range(img_h):
-        ratio = y / (img_h - 1)
-        red = int(top_r * (1 - ratio) + bottom_r * ratio)
-        green = int(top_g * (1 - ratio) + bottom_g * ratio)
-        blue = int(top_b * (1 - ratio) + bottom_b * ratio)
-        for x in range(img_w):
-            image.putpixel((x, y), (red, green, blue))
-    return image
-
-
-async def get_cover_path(
-    data_dir,
-    gameid,
-    game_name,
-    force_update=False,
-    sgdb_api_key=None,
-    sgdb_game_name=None,
-    appid=None,
-    http_client: httpx.AsyncClient | None = None,
-    request_semaphore=None,
-):
-    cover_dir = os.path.join(data_dir, "covers_v")
-    os.makedirs(cover_dir, exist_ok=True)
-    path = os.path.join(cover_dir, f"{gameid}.jpg")
-    if os.path.exists(path) and not force_update:
-        return path
-    cover_url = await get_sgdb_vertical_cover(
-        game_name,
-        sgdb_api_key=sgdb_api_key,
-        sgdb_game_name=sgdb_game_name,
-        appid=appid,
-        http_client=http_client,
-        request_semaphore=request_semaphore,
-    )
-    if not cover_url:
-        return path if os.path.exists(path) else None
-    if http_client is None:
-        async with httpx.AsyncClient(timeout=10) as client:
-            downloaded_path = await download_to_path(client, cover_url, path, timeout=10)
-    else:
-        downloaded_path = await download_to_path(
-            http_client,
-            cover_url,
-            path,
-            timeout=10,
-            semaphore=request_semaphore,
-        )
-    if downloaded_path:
-        return downloaded_path
-    return path if os.path.exists(path) else None
-
-
 def draw_duration_bar(draw, x, y, width, height, duration_h):
     pad = 1
-    draw.rounded_rectangle([x - pad, y - pad, x + width + pad, y + height + pad], radius=(height + pad) // 2, fill=(0, 0, 0, 180))
+    draw.rounded_rectangle(
+        [x - pad, y - pad, x + width + pad, y + height + pad],
+        radius=(height + pad) // 2,
+        fill=(0, 0, 0, 180),
+    )
     draw.rounded_rectangle([x, y, x + width, y + height], radius=height // 2, outline=(0, 0, 0, 255), width=1)
-    draw.rounded_rectangle([x - 2, y - 2, x + width + 2, y + height + 2], radius=(height + 4) // 2, outline=(255, 255, 255, 220), width=1)
+    draw.rounded_rectangle(
+        [x - 2, y - 2, x + width + 2, y + height + 2],
+        radius=(height + 4) // 2,
+        outline=(255, 255, 255, 220),
+        width=1,
+    )
 
     bar_colors = [
         (80, 200, 120),
@@ -204,7 +59,14 @@ def draw_duration_bar(draw, x, y, width, height, duration_h):
         bbox = draw.textbbox((0, 0), text, font=font)
         text_x = x + width // 2 - (bbox[2] - bbox[0]) // 2
         text_y = y + height // 2 - (bbox[3] - bbox[1]) // 2 - 5
-        draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0, 180))
+        draw.text(
+            (text_x, text_y),
+            text,
+            font=font,
+            fill=(255, 255, 255, 255),
+            stroke_width=2,
+            stroke_fill=(0, 0, 0, 180),
+        )
         return
 
     for segment_start, segment_end, color in zip(segment_starts, segment_limits, bar_colors):
@@ -225,17 +87,6 @@ def draw_duration_bar(draw, x, y, width, height, duration_h):
             text_x = x + width // 2 - (bbox[2] - bbox[0]) // 2
             text_y = y + height // 2 - (bbox[3] - bbox[1]) // 2 - 5
             draw.text((text_x, text_y), text, font=font, fill=color, stroke_width=2, stroke_fill=(0, 0, 0, 180))
-
-
-def get_font_path(font_name):
-    fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
-    font_path = os.path.join(fonts_dir, font_name)
-    if os.path.exists(font_path):
-        return font_path
-    fallback_path = os.path.join(os.path.dirname(__file__), font_name)
-    if os.path.exists(fallback_path):
-        return fallback_path
-    return font_name
 
 
 def text_wrap(text, font, max_width):
@@ -262,7 +113,11 @@ def text_wrap(text, font, max_width):
 def render_game_end_image(player_name, avatar_path, game_name, cover_path, end_time_str, tip_text, duration_h, font_path=None):
     fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
     font_regular = font_path or os.path.join(fonts_dir, "NotoSansHans-Regular.otf")
-    font_medium = font_regular.replace("Regular", "Medium") if "Regular" in font_regular else os.path.join(fonts_dir, "NotoSansHans-Medium.otf")
+    font_medium = (
+        font_regular.replace("Regular", "Medium")
+        if "Regular" in font_regular
+        else os.path.join(fonts_dir, "NotoSansHans-Medium.otf")
+    )
     if not os.path.isabs(font_regular):
         font_regular = os.path.join(fonts_dir, os.path.basename(font_regular))
     if not os.path.isabs(font_medium):
@@ -295,8 +150,8 @@ def render_game_end_image(player_name, avatar_path, game_name, cover_path, end_t
             resized_star.putalpha(alpha)
             for x in range(0, IMG_W, resized_width):
                 image.alpha_composite(resized_star, (x, 0))
-        except Exception:
-            pass
+        except Exception as error:
+            logger.warning(f"结束游戏星空背景渲染失败: {error}")
 
     cover_width = COVER_W
     if cover_path and os.path.exists(cover_path):
@@ -310,7 +165,8 @@ def render_game_end_image(player_name, avatar_path, game_name, cover_path, end_t
                 cover_resized = cover_resized.crop((0, 0, IMG_W, cover_height))
                 cover_width = IMG_W
             image.paste(cover_resized, (0, 0), cover_resized)
-        except Exception:
+        except Exception as error:
+            logger.warning(f"结束游戏封面渲染失败: {error}")
             cover_width = COVER_W
 
     avatar_x = cover_width + 24
@@ -323,16 +179,24 @@ def render_game_end_image(player_name, avatar_path, game_name, cover_path, end_t
             draw_mask.rounded_rectangle((0, 0, AVATAR_SIZE, AVATAR_SIZE), radius=AVATAR_SIZE // 5, fill=255)
             avatar.putalpha(mask)
             image.alpha_composite(avatar, (avatar_x, avatar_y))
-        except Exception:
-            pass
+        except Exception as error:
+            logger.warning(f"结束游戏头像渲染失败: {error}")
 
     try:
         time_text = time.strftime("%H:%M", time.strptime(end_time_str, "%Y-%m-%d %H:%M"))
     except Exception:
         time_text = end_time_str[-5:]
+
     bbox = draw.textbbox((0, 0), time_text, font=font_time, stroke_width=2)
     time_x = IMG_W - bbox[2] + bbox[0] - 18
-    draw.text((time_x, 6), time_text, font=font_time, fill=(255, 255, 255, 220), stroke_width=2, stroke_fill=(0, 0, 0, 255))
+    draw.text(
+        (time_x, 6),
+        time_text,
+        font=font_time,
+        fill=(255, 255, 255, 220),
+        stroke_width=2,
+        stroke_fill=(0, 0, 0, 255),
+    )
 
     title_text = player_name
     max_title_width = IMG_W - (avatar_x + AVATAR_SIZE + 20) - 24
@@ -350,13 +214,28 @@ def render_game_end_image(player_name, avatar_path, game_name, cover_path, end_t
         title_font = ImageFont.truetype(font_medium, title_font_size)
     except Exception:
         title_font = ImageFont.load_default()
-    draw.text((avatar_x + AVATAR_SIZE + 20, 16), title_text, font=title_font, fill=(180, 160, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0, 255))
+
+    draw.text(
+        (avatar_x + AVATAR_SIZE + 20, 16),
+        title_text,
+        font=title_font,
+        fill=(180, 160, 255, 255),
+        stroke_width=2,
+        stroke_fill=(0, 0, 0, 255),
+    )
 
     game_name_y = 16 + title_font.size + 8
     max_game_name_width = IMG_W - (avatar_x + AVATAR_SIZE + 20) - 24
     game_name_lines = text_wrap(game_name, font_game, max_game_name_width)
     for index, line in enumerate(game_name_lines[:2]):
-        draw.text((avatar_x + AVATAR_SIZE + 20, game_name_y + index * (font_game.size + 2)), line, font=font_game, fill=(220, 220, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0, 255))
+        draw.text(
+            (avatar_x + AVATAR_SIZE + 20, game_name_y + index * (font_game.size + 2)),
+            line,
+            font=font_game,
+            fill=(220, 220, 255, 255),
+            stroke_width=2,
+            stroke_fill=(0, 0, 0, 255),
+        )
 
     bar_x = avatar_x
     bar_y = IMG_H - 24
@@ -364,7 +243,14 @@ def render_game_end_image(player_name, avatar_path, game_name, cover_path, end_t
         duration_text = f"已玩{int(duration_h * 60)}分钟："
     else:
         duration_text = f"已玩{duration_h:.1f}小时："
-    draw.text((bar_x, bar_y - 2), duration_text, font=font_tip, fill=(180, 220, 255, 220), stroke_width=1, stroke_fill=(0, 0, 0, 255))
+    draw.text(
+        (bar_x, bar_y - 2),
+        duration_text,
+        font=font_tip,
+        fill=(180, 220, 255, 220),
+        stroke_width=1,
+        stroke_fill=(0, 0, 0, 255),
+    )
     duration_bbox = draw.textbbox((bar_x, bar_y - 2), duration_text, font=font_tip)
     bar_start_x = duration_bbox[2] + 6
     bar_width = IMG_W - bar_start_x - 18

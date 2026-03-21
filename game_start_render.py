@@ -1,158 +1,20 @@
+import asyncio
 import io
-import logging
 import os
-import time
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
 
-from .runtime_utils import download_to_path, fetch_json
+from astrbot.api import logger
 
-logger = logging.getLogger(__name__)
+from .render_common import get_avatar_path, get_cover_path, render_gradient_bg
+from .runtime_utils import fetch_json
 
 BG_COLOR_TOP = (49, 80, 66)
 BG_COLOR_BOTTOM = (28, 35, 44)
 AVATAR_SIZE = 80
 COVER_W, COVER_H = 80, 120
 IMG_W, IMG_H = 512, 192
-
-
-async def get_avatar_path(
-    data_dir,
-    steamid,
-    url,
-    force_update=False,
-    http_client: httpx.AsyncClient | None = None,
-    request_semaphore=None,
-):
-    if not url:
-        return None
-    avatar_dir = os.path.join(data_dir, "avatars")
-    os.makedirs(avatar_dir, exist_ok=True)
-    path = os.path.join(avatar_dir, f"{steamid}.jpg")
-    refresh_interval = 24 * 3600
-    if os.path.exists(path) and not force_update:
-        if time.time() - os.path.getmtime(path) < refresh_interval:
-            return path
-    if http_client is None:
-        async with httpx.AsyncClient(timeout=10) as client:
-            return await download_to_path(client, url, path, timeout=10)
-    return await download_to_path(http_client, url, path, timeout=10, semaphore=request_semaphore)
-
-
-async def get_sgdb_vertical_cover(
-    game_name,
-    sgdb_api_key=None,
-    sgdb_game_name=None,
-    appid=None,
-    http_client: httpx.AsyncClient | None = None,
-    request_semaphore=None,
-):
-    if not sgdb_api_key:
-        return None
-    headers = {"Authorization": f"Bearer {sgdb_api_key}"}
-    search_name = sgdb_game_name if sgdb_game_name else game_name
-    if not search_name:
-        return None
-
-    async def _get_cover_url(client: httpx.AsyncClient, candidate_name: str) -> str | None:
-        search_url = f"https://www.steamgriddb.com/api/v2/search/autocomplete/{candidate_name}"
-        status_code, data = await fetch_json(
-            client,
-            search_url,
-            headers=headers,
-            timeout=10,
-            semaphore=request_semaphore,
-        )
-        if status_code != 200 or not data or not data.get("success") or not data.get("data"):
-            return None
-        sgdb_game_id = data["data"][0]["id"]
-        grid_url = f"https://www.steamgriddb.com/api/v2/grids/game/{sgdb_game_id}?dimensions=600x900&type=static&limit=3"
-        status_code, grid_data = await fetch_json(
-            client,
-            grid_url,
-            headers=headers,
-            timeout=10,
-            semaphore=request_semaphore,
-        )
-        if status_code != 200 or not grid_data or not grid_data.get("success") or not grid_data.get("data"):
-            return None
-        for grid in grid_data["data"]:
-            if grid.get("type") == "static" and grid.get("url"):
-                return grid["url"]
-        first_item = grid_data["data"][0]
-        return first_item.get("url")
-
-    async def _resolve_from_appid(client: httpx.AsyncClient) -> str | None:
-        if not appid:
-            return None
-        game_url = f"https://www.steamgriddb.com/api/v2/games/steam/{appid}"
-        status_code, data = await fetch_json(
-            client,
-            game_url,
-            headers=headers,
-            timeout=10,
-            semaphore=request_semaphore,
-        )
-        if status_code != 200 or not data or not data.get("success") or not data.get("data"):
-            return None
-        sgdb_name = data["data"].get("name")
-        if not sgdb_name:
-            return None
-        return await _get_cover_url(client, sgdb_name)
-
-    async def _run(client: httpx.AsyncClient) -> str | None:
-        cover_url = await _get_cover_url(client, search_name)
-        if cover_url:
-            return cover_url
-        return await _resolve_from_appid(client)
-
-    if http_client is None:
-        async with httpx.AsyncClient(timeout=10) as client:
-            return await _run(client)
-    return await _run(http_client)
-
-
-async def get_cover_path(
-    data_dir,
-    gameid,
-    game_name,
-    force_update=False,
-    sgdb_api_key=None,
-    sgdb_game_name=None,
-    appid=None,
-    http_client: httpx.AsyncClient | None = None,
-    request_semaphore=None,
-):
-    cover_dir = os.path.join(data_dir, "covers_v")
-    os.makedirs(cover_dir, exist_ok=True)
-    path = os.path.join(cover_dir, f"{gameid}.jpg")
-    if os.path.exists(path) and not force_update:
-        return path
-    cover_url = await get_sgdb_vertical_cover(
-        game_name,
-        sgdb_api_key=sgdb_api_key,
-        sgdb_game_name=sgdb_game_name,
-        appid=appid,
-        http_client=http_client,
-        request_semaphore=request_semaphore,
-    )
-    if not cover_url:
-        return path if os.path.exists(path) else None
-    if http_client is None:
-        async with httpx.AsyncClient(timeout=10) as client:
-            downloaded_path = await download_to_path(client, cover_url, path, timeout=10)
-    else:
-        downloaded_path = await download_to_path(
-            http_client,
-            cover_url,
-            path,
-            timeout=10,
-            semaphore=request_semaphore,
-        )
-    if downloaded_path:
-        return downloaded_path
-    return path if os.path.exists(path) else None
 
 
 def text_wrap(text, font, max_width):
@@ -190,20 +52,6 @@ def pad_game_name(game_name, min_cn_len=10):
     current_length = get_chinese_length(game_name)
     pad_length = max(0, min_cn_len - current_length)
     return game_name + "　" * pad_length + "   "
-
-
-def render_gradient_bg(img_w, img_h, color_top, color_bottom):
-    image = Image.new("RGB", (img_w, img_h), color_top)
-    top_r, top_g, top_b = color_top
-    bottom_r, bottom_g, bottom_b = color_bottom
-    for y in range(img_h):
-        ratio = y / (img_h - 1)
-        red = int(top_r * (1 - ratio) + bottom_r * ratio)
-        green = int(top_g * (1 - ratio) + bottom_g * ratio)
-        blue = int(top_b * (1 - ratio) + bottom_b * ratio)
-        for x in range(img_w):
-            image.putpixel((x, y), (red, green, blue))
-    return image
 
 
 async def get_playtime_hours(
@@ -258,17 +106,6 @@ async def get_playtime_hours(
     return 0.0
 
 
-def get_font_path(font_name):
-    fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
-    font_path = os.path.join(fonts_dir, font_name)
-    if os.path.exists(font_path):
-        return font_path
-    fallback_path = os.path.join(os.path.dirname(__file__), font_name)
-    if os.path.exists(fallback_path):
-        return fallback_path
-    return font_name
-
-
 def render_game_start_image(
     player_name,
     avatar_path,
@@ -281,7 +118,11 @@ def render_game_start_image(
 ):
     fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
     font_regular = font_path or os.path.join(fonts_dir, "NotoSansHans-Regular.otf")
-    font_medium = font_regular.replace("Regular", "Medium") if "Regular" in font_regular else os.path.join(fonts_dir, "NotoSansHans-Medium.otf")
+    font_medium = (
+        font_regular.replace("Regular", "Medium")
+        if "Regular" in font_regular
+        else os.path.join(fonts_dir, "NotoSansHans-Medium.otf")
+    )
     if not os.path.isabs(font_regular):
         font_regular = os.path.join(fonts_dir, os.path.basename(font_regular))
     if not os.path.isabs(font_medium):
@@ -310,7 +151,8 @@ def render_game_start_image(
             cover_height = IMG_H
             cover_resized = cover_source.resize((cover_width, cover_height), Image.LANCZOS)
             image.paste(cover_resized, (0, 0), cover_resized)
-        except Exception:
+        except Exception as error:
+            logger.warning(f"开始游戏封面渲染失败: {error}")
             cover_width = COVER_W
 
     avatar_margin = 24
@@ -331,9 +173,8 @@ def render_game_start_image(
             mask_draw.rounded_rectangle((0, 0, AVATAR_SIZE, AVATAR_SIZE), radius=AVATAR_SIZE // 5, fill=255)
             avatar.putalpha(mask)
             image.alpha_composite(avatar, (avatar_x, avatar_y))
-
-        except Exception:
-            pass
+        except Exception as error:
+            logger.warning(f"开始游戏头像渲染失败: {error}")
 
     online_text = None
     online_text_width = 0
@@ -365,7 +206,12 @@ def render_game_start_image(
     draw.text((text_x + 8, text_y), player_name, font=player_font, fill=(255, 255, 255, 255))
     draw.text((text_x + 8, text_y + line_height), "正在玩", font=font, fill=(200, 255, 200, 255))
     for index, line in enumerate(game_name_lines):
-        draw.text((text_x + 8, text_y + line_height * 2 + index * line_height), line, font=font, fill=(129, 173, 81, 255))
+        draw.text(
+            (text_x + 8, text_y + line_height * 2 + index * line_height),
+            line,
+            font=font,
+            fill=(129, 173, 81, 255),
+        )
 
     if playtime_hours is not None:
         playtime_text = f"游戏时间 {playtime_hours} 小时"
