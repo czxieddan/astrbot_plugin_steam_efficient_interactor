@@ -1,4 +1,4 @@
-name: steam_efficient_interactor
+name: astrbot_plugin_steam_efficient_interactor
 display_name: Steam高效互动者
 desc: 通过llm互动控制bot监控Steam指定玩家的状态变更与通知推送或查看信息。
 author: Yezi & CzXieDdan
