@@ -16,7 +16,9 @@
 </p>
 </div>
 
-<div align="center">
+---
+
+<div align="center"><ul>
 
 <p>稳定监控多个 SteamID</p>
 
@@ -28,14 +30,18 @@
 
 <p>为 AstrBot 提供可自然语言调用的查询工具</p>
 
-</div>
+</ul></div>
+
+---
 
 <div align="center">
-  <h2>特别鸣谢</h2>
+  <h3>特别鸣谢</h3>
   <a href="https://github.com/czxieddan/astrbot_plugin_steam_efficient_interactor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=czxieddan/astrbot_plugin_steam_efficient_interactor" />
   </a>
 </div>
+
+---
 
 ## 功能特性
 
@@ -314,19 +320,5 @@ SteamID|平台:消息类型:会话ID
 ## 借鉴来源
 
 本项目借鉴自[Steam 状态监控插件V2](https://github.com/Maoer233/astrbot_plugin_steam_status_monitor)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
