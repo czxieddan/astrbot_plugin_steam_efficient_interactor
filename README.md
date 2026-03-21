@@ -1,36 +1,58 @@
 <div align="center">
 <!-- Title: -->
-  <a href="https://github.com/czxieddan/">
-    <img src="logo.png" height="200">
-  </a>
-  <h1>Steam高效互动者 - <a href="https://github.com/czxieddan/">Yezi & CzXieDdan</a></h1>
+<a href="https://github.com/czxieddan/">
+ <img src="logo.png" height="200">
+</a>
+<h1>Steam高效互动者 - <a href="https://github.com/czxieddan/">Yezi & CzXieDdan</a></h1>
 <p><strong>面向 AstrBot 的 Steam 状态监控插件</strong><br>
 通过llm互动控制bot监控Steam指定玩家的状态变更与通知推送或查看信息。</p>
-
+</div>
+<div align="center">
 <p>
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/License-GPLv3-ff3a68?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/github/stars/czxieddan/astrbot_plugin_steam_efficient_interactor?style=for-the-badge&color=ffd700" alt="Stars">
   <img src="https://img.shields.io/badge/Platform-AstrBot-lightgrey?style=for-the-badge" alt="Platform">
 </p>
+</div>
+
+<div align="center">
+
+<p>稳定监控多个 SteamID</p>
+
+<p>群维度管理玩家绑定关系</p>
+
+<p>以图片形式优先展示状态变化</p>
+
+<p>持久化保存关键配置和监控状态</p>
+
+<p>为 AstrBot 提供可自然语言调用的查询工具</p>
 
 </div>
 
-- 稳定监控多个 SteamID
-- 群维度管理玩家绑定关系
-- 以图片形式优先展示状态变化
-- 持久化保存关键配置和监控状态
-- 为 AstrBot 提供可自然语言调用的查询工具
+<div align="center">
+  <h2>特别鸣谢</h2>
+  <a href="https://github.com/czxieddan/astrbot_plugin_steam_efficient_interactor/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=czxieddan/astrbot_plugin_steam_efficient_interactor" />
+  </a>
+</div>
 
 ## 功能特性
 
 - 支持群维度绑定多个 SteamID
+
 - 支持监控玩家在线、离线、开始游戏、结束游戏
+
 - 支持成就变化检测与图片推送
+
 - 支持状态查询、群状态查询、最近事件查询
+
 - 支持 Steam API Key 多 Key 轮换
+
 - 支持运行时配置持久化，减少升级覆盖带来的配置丢失
+
 - 支持图片优先输出，已有图片预设的场景不重复发送文字
+
 - 支持 AstrBot LLM 工具调用与自然语言查询
 
 ## 安装方式
@@ -289,22 +311,13 @@ SteamID|平台:消息类型:会话ID
 - 离线 48 小时内：约 1200 秒
 - 更久：约 1800 秒
 
-## 版本说明
-
-当前版本以 `metadata.yaml` 与 `main.py` 注册版本号为准。
-
-## 联系与反馈
-
-如需反馈问题、提交建议或继续维护，可以基于当前仓库自行扩展。  
-
-## 制作名单
-
-- Yezi
-- CzXieDdan
-
 ## 借鉴来源
 
 本项目借鉴自[Steam 状态监控插件V2](https://github.com/Maoer233/astrbot_plugin_steam_status_monitor)
+
+
+
+
 
 
 
