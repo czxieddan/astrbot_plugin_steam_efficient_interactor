@@ -1,7 +1,7 @@
 <div align="center">
 <!-- Title: -->
   <a href="https://github.com/czxieddan/">
-    <img src="https://i.imgur.com/h1Kllvh.png" height="200">
+    <img src="logo.png" height="200">
   </a>
   <h1>Steam高效互动者 - <a href="https://github.com/czxieddan/">Yezi & CzXieDdan</a></h1>
 <p><strong>面向 AstrBot 的 Steam 状态监控插件</strong><br>
