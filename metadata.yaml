@@ -6,4 +6,5 @@ repo: https://github.com/czxieddan/astrbot_plugin_steam_efficient_interactor
 version: 2.7.7
 tags:
   - steam
+  - llm
 social_link: https://github.com/czxieddan
