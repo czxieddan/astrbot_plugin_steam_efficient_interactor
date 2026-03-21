@@ -1,0 +1,50 @@
+{
+  "steam_api_key": {
+    "description": "Steam Web API Key（支持多个，用逗号分隔或直接填写列表）",
+    "type": "list",
+    "hint": "请在 https://steamcommunity.com/dev/apikey 获取，支持多个 API Key 轮询使用",
+    "default": []
+  },
+  "sgdb_api_key": {
+    "description": "SteamGridDB API Key",
+    "type": "string",
+    "hint": "请在 https://www.steamgriddb.com/profile/preferences/api 获取"
+  },
+  "fixed_poll_interval": {
+    "description": "固定轮询间隔（秒）",
+    "type": "int",
+    "hint": "为0时使用智能轮询，大于0时所有玩家统一固定间隔轮询（如600秒）",
+    "default": 0
+  },
+  "retry_times": {
+    "description": "Steam API请求重试次数 ",
+    "type": "int",
+    "hint": "每次请求失败后最多重试几次 ",
+    "default": 3
+  },
+  "detailed_poll_log": {
+    "description": "详细轮询日志开关",
+    "type": "bool",
+    "hint": "控制台输出完整轮询日志，默认关闭以避免刷屏（修改后重启AstrBot生效）",
+    "default": false
+  },
+  "max_achievement_notifications": {
+    "description": "单次成就通知最多展示数量",
+    "type": "int",
+    "hint": "超出数量的成就会被截断，避免单次推送过长",
+    "default": 5
+  },
+  "steam_group_mapping": {
+    "description": "SteamID与群号映射",
+    "type": "list",
+    "hint": "格式(建议后者): SteamID|群号 或 SteamID|平台:消息类型:会话ID，例如: 76561198888888888|123456789 或 76561198888888888|aiocqhttp:GroupMessage:123456789",
+    "default": []
+  }
+  ,
+  "enable_failure_blacklist": {
+    "description": "失败加入黑名单开关",
+    "type": "bool",
+    "hint": "关闭时失败不再自动加入成就黑名单",
+    "default": false
+  }
+}
