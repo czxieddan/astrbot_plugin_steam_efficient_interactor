@@ -3,7 +3,7 @@
 <a href="https://github.com/czxieddan/">
  <img src="logo.png" height="200">
 </a>
-<h1>Steam高效互动者 - <a href="https://github.com/czxieddan/">Yezi & CzXieDdan</a></h1>
+<h1>Steam高效互动者 - <a href="https://github.com/zhyx111999/">Yezi</a> & <a href="https://github.com/czxieddan/">CzXieDdan</a></h1>
 <p><strong>面向 AstrBot 的 Steam 状态监控插件</strong><br>
 通过llm互动控制bot监控Steam指定玩家的状态变更与通知推送或查看信息。</p>
 </div>
