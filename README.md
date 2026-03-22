@@ -18,48 +18,44 @@
 
 ---
 
-<div align="center"><ul>
+## ✨ 项目特色
 
-<p>稳定监控多个 SteamID</p>
+> 不只是一个冰冷命令插件，而是一个可交互的 **Steam高效互动者**。
 
-<p>群维度管理玩家绑定关系</p>
-
-<p>以图片形式优先展示状态变化</p>
-
-<p>持久化保存关键配置和监控状态</p>
-
-<p>为 AstrBot 提供可自然语言调用的查询工具</p>
-
-</ul></div>
+<table>
+  <tr>
+    <td width="50%">
+      <h3>高效监视保时效</h3>
+      <p>稳定高效监控多个Steam ID，实时推送用户状态新变化。</p>
+    </td>
+    <td width="50%">
+      <h3>分群管理保安全</h3>
+      <p>群维度管理用户绑定关系，分群管理保证用户圈子安全。</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>图片传信保养眼</h3>
+      <p>图片形式优先展示状态变化，拒绝完全冰冷的文本描述。</p>
+    </td>
+    <td width="50%">
+      <h3>持久数据保信息</h3>
+      <p>持久化保存全部配置信息，监控状态，拒绝信息丢失情况。</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>自然调用保人情</h3>
+      <p>强壮llm函数的为AstrBot提供可自然语言调用的查询工具。</p>
+    </td>
+    <td width="50%">
+      <h3>池内轮换保有效</h3>
+      <p>支持 Steam API Key 在 API 池内多 Key 轮换，重试保障。</p>
+    </td>
+  </tr>
+</table>
 
 ---
-
-<div align="center">
-  <h3>特别鸣谢</h3>
-  <a href="https://github.com/czxieddan/astrbot_plugin_steam_efficient_interactor/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=czxieddan/astrbot_plugin_steam_efficient_interactor" />
-  </a>
-</div>
-
----
-
-## 功能特性
-
-- 支持群维度绑定多个 SteamID
-
-- 支持监控玩家在线、离线、开始游戏、结束游戏
-
-- 支持成就变化检测与图片推送
-
-- 支持状态查询、群状态查询、最近事件查询
-
-- 支持 Steam API Key 多 Key 轮换
-
-- 支持运行时配置持久化，减少升级覆盖带来的配置丢失
-
-- 支持图片优先输出，已有图片预设的场景不重复发送文字
-
-- 支持 AstrBot LLM 工具调用与自然语言查询
 
 ## 安装方式
 
@@ -250,61 +246,6 @@ SteamID|平台:消息类型:会话ID
 - 群状态图片
 - 单玩家状态图片
 
-## 输出规则
-
-- 已有图片预设的场景优先图片，不重复补发文字
-- 图片生成失败时，才回退到文字说明
-- 图片中不渲染无必要的固定小标题、固定吐槽文案、装饰性标题
-- 文本工具遵守 AstrBot 原生工作链
-
-## 常见问题排查
-
-### 1. 查询结果全部是 401 / 403
-
-这通常更像是 API Key 问题，而不是玩家隐私设置问题。
-
-先检查：
-
-- AstrBot 插件配置页里是否真的填写了有效 `steam_api_key`
-- 是否配置了多个 Key 但都已失效
-- `/steam api_status` 输出中当前生效的 key 数量是否正确
-- 控制台中是否出现 API 轮换诊断日志
-
-### 2. 配置看起来填了，但运行时像没生效
-
-请优先检查：
-
-- AstrBot 当前配置页
-- `/steam api_status`
-- 数据目录中的 `runtime_config.json`
-- 控制台中的 `[steam_status_monitor] API配置诊断[...]` 日志
-
-### 3. 图片和文字同时发送
-
-当前设计为：
-
-- 有图时只发图
-- 无图时才发文字
-
-如果仍出现双发，应重点检查：
-
-- 是否是旧版本插件未完全重启
-- 是否是其他插件或上游逻辑重复发送
-
-### 4. 看不到谁在线或谁在玩什么
-
-可能原因：
-
-- Steam API Key 失效
-- 网络环境异常
-- Steam 接口临时拒绝
-- 玩家资料权限关闭
-- 绑定的 SteamID 本身无效
-
-### 5. 修改配置后没有立刻生效
-
-部分配置项在运行时会动态生效，但某些场景建议重启 AstrBot 后再验证，以避免旧后台任务残留。
-
 ## 轮询说明
 
 当 `fixed_poll_interval = 0` 时，插件使用智能轮询：
@@ -320,5 +261,22 @@ SteamID|平台:消息类型:会话ID
 ## 借鉴来源
 
 本项目借鉴自[Steam 状态监控插件V2](https://github.com/Maoer233/astrbot_plugin_steam_status_monitor)
+
+---
+
+<div align="center">
+  <h3>👥 Contributors</h3>
+  <a href="https://github.com/czxieddan/astrbot_plugin_steam_efficient_interactor/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=czxieddan/astrbot_plugin_steam_efficient_interactor" />
+  </a>
+</div>
+
+---
+
+<div align="center">
+  <a href="https://star-history.com/#czxieddan/astrbot_plugin_steam_efficient_interactor/graphs/contributors&Date">
+  <img src="https://api.star-history.com/svg?repos=czxieddan/astrbot_plugin_steam_efficient_interactor/graphs/contributors&type=Date" alt="Star History Chart" />
+  </a>
+</div>
 
 
