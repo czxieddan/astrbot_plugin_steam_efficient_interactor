@@ -3,7 +3,7 @@ display_name: Steam高效互动者
 desc: 通过llm互动控制bot监控Steam指定玩家的状态变更与通知推送或查看信息。
 author: Yezi & CzXieDdan
 repo: https://github.com/czxieddan/astrbot_plugin_steam_efficient_interactor
-version: 2.7.9
+version: 2.8.0
 tags:
   - steam
   - llm
