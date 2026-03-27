@@ -42,11 +42,11 @@ from .superpower_util import get_daily_superpower, load_abilities
 
 
 @register(
-    "steam_status_monitor_shell",
-    "Yezi 和 Cz",
-    "Steam状态监控插件",
-    "2.7.7",
-    "https://github.com/1592363624/astrbot_plugin_steam_status_monitor_shell",
+    "astrbot_plugin_steam_efficient_interactor",
+    "Yezi & CzXieDdan",
+    "Steam高效互动者",
+    "2.8.2",
+    "https://github.com/czxieddan/astrbot_plugin_steam_efficient_interactor",
 )
 class SteamStatusMonitorV2(Star):
     def _get_group_data_path(self, group_id, key):
