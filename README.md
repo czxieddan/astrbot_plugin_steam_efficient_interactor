@@ -267,7 +267,7 @@ SteamID|平台:消息类型:会话ID
 <div align="center">
   <h3>👥 Contributors</h3>
   <a href="https://github.com/czxieddan/astrbot_plugin_steam_efficient_interactor/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=czxieddan/astrbot_plugin_steam_efficient_interactor" />
+  <img src="https://stg.contrib.rocks/image?repo=czxieddan/astrbot_plugin_steam_efficient_interactor" />
   </a>
 </div>
 
